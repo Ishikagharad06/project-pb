@@ -34,7 +34,8 @@ console.log("DATABASE_URL loaded:", !!process.env.DATABASE_URL);
 const app = express();
 const PORT = 3000;
 
-export { app };
+
+export default app;
 
 app.use(express.json());
 
