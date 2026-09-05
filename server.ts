@@ -34,6 +34,8 @@ console.log("DATABASE_URL loaded:", !!process.env.DATABASE_URL);
 const app = express();
 const PORT = 3000;
 
+export { app };
+
 app.use(express.json());
 
 // Enable CORS
@@ -497,22 +499,24 @@ async function startServer() {
   });
 }
 
-testNeonConnection()
-  .then(() => testDatabaseTables())
-  .then(() => inspectParkingSlots())
-  .then(() => inspectParkingTables())
-  .then(() => inspectParkingData())
-  .then(() => ensurePaymentsTable())
-  .then(() => startServer())
-  .then(() => {
-    // Auto-expire bookings whose scheduled time has passed, freeing their slots.
-    setInterval(() => {
-      completeExpiredNeonBookings().catch(err =>
-        console.error('❌ Failed to auto-complete expired bookings:', err)
-      );
-    }, 30_000);
-  })
-  .catch((error) => {
-    console.error('❌ Database startup error:', error);
-    process.exit(1);
-  });
+if (!process.env.VERCEL) {
+  testNeonConnection()
+    .then(() => testDatabaseTables())
+    .then(() => inspectParkingSlots())
+    .then(() => inspectParkingTables())
+    .then(() => inspectParkingData())
+    .then(() => ensurePaymentsTable())
+    .then(() => startServer())
+    .then(() => {
+      // Auto-expire bookings whose scheduled time has passed, freeing their slots.
+      setInterval(() => {
+        completeExpiredNeonBookings().catch(err =>
+          console.error('❌ Failed to auto-complete expired bookings:', err)
+        );
+      }, 30_000);
+    })
+    .catch((error) => {
+      console.error('❌ Database startup error:', error);
+      process.exit(1);
+    });
+}
