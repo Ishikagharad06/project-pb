@@ -1,0 +1,23 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+django.env
+django.env.backup
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Local databases
+*.sqlite3
+db.sqlite3.safe-backup
