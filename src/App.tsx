@@ -47,12 +47,11 @@ export default function App() {
       }
     }
 
+    // Neon demo user
     return {
-      // Matches the seeded demo user's id in the Neon `users` table
-      // (see database/seed.sql). Bookings are saved against this id.
       id: '8a1f636a-f688-4192-a9f9-41113a61761b',
-name: 'Keshav Gupta',
-email: 'keshavgupt03@gmail.com',
+      name: 'Keshav Gupta',
+      email: 'keshavgupt03@gmail.com',
       role: 'admin',
       phone: '+91-9876543210',
       wallet_balance: 500,
@@ -97,19 +96,33 @@ email: 'keshavgupt03@gmail.com',
 
   // -----------------------------
   // Fetch locations, slots,
-  // and bookings
+  // and bookings from backend
   // -----------------------------
   const fetchData = async () => {
     try {
       setIsLoading(true);
 
-      const [locationsResponse, slotsResponse, bookingsResponse] =
-        await Promise.all([
-          fetch(`${API_BASE_URL}/api/locations`),
-          fetch(`${API_BASE_URL}/api/slots`),
-          fetch(`${API_BASE_URL}/api/bookings/my?user_id=${encodeURIComponent(currentUser?.id || 'usr-demo')}`)
-        ]);
+      const userId = currentUser?.id || '';
 
+      const [
+        locationsResponse,
+        slotsResponse,
+        bookingsResponse,
+      ] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/locations`),
+
+        fetch(`${API_BASE_URL}/api/slots`),
+
+        fetch(
+          `${API_BASE_URL}/api/bookings/my?user_id=${encodeURIComponent(
+            userId
+          )}`
+        ),
+      ]);
+
+      // -----------------------------
+      // Locations
+      // -----------------------------
       if (locationsResponse.ok) {
         const locationsData = await locationsResponse.json();
         setLocations(locationsData);
@@ -120,15 +133,30 @@ email: 'keshavgupt03@gmail.com',
         );
       }
 
+      // -----------------------------
+      // Slots
+      // -----------------------------
       if (slotsResponse.ok) {
         const slotsData = await slotsResponse.json();
         setSlots(slotsData);
       } else {
-        console.error('Failed to fetch slots:', slotsResponse.status);
+        console.error(
+          'Failed to fetch slots:',
+          slotsResponse.status
+        );
       }
 
+      // -----------------------------
+      // Bookings
+      // -----------------------------
       if (bookingsResponse.ok) {
         const bookingsData = await bookingsResponse.json();
+
+        console.log(
+          'MY BOOKINGS RESPONSE:',
+          bookingsData
+        );
+
         setBookings(bookingsData);
       } else {
         console.error(
@@ -156,50 +184,127 @@ email: 'keshavgupt03@gmail.com',
     return () => {
       clearInterval(interval);
     };
-  }, []);
+  }, [currentUser?.id]);
 
   // -----------------------------
-  // Book parking slot
+  // Book parking slot + Payment
   // -----------------------------
-const handleBookSlot = async (
-  slotId: string,
-  vehicleNo: string,
-  duration: number
-) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/bookings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        slot_id: slotId,
-        vehicle_number: vehicleNo,
-        duration,
-        user_id: currentUser?.id || 'usr-demo',
-      }),
-    });
+  const handleBookSlot = async (
+    slotId: string,
+    vehicleNo: string,
+    duration: number,
+    paymentMethod: string = 'upi'
+  ) => {
+    try {
+      // ---------------------------------------------
+      // Make sure we have a real Neon user ID
+      // ---------------------------------------------
+      if (!currentUser?.id) {
+        throw new Error(
+          'Please log in before booking a parking slot.'
+        );
+      }
 
-    const data = await response.json();
-
-    console.log('BOOKING RESPONSE:', response.status, data);
-
-    if (!response.ok) {
-      throw new Error(
-        data.reason ||
-          data.error ||
-          'Failed to create booking'
+      // ---------------------------------------------
+      // STEP 1: Create booking in Neon
+      // ---------------------------------------------
+      const bookingResponse = await fetch(
+        `${API_BASE_URL}/api/bookings`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            slot_id: slotId,
+            vehicle_number: vehicleNo,
+            duration,
+            user_id: currentUser.id,
+          }),
+        }
       );
+
+      const bookingData = await bookingResponse.json();
+
+      console.log(
+        'BOOKING RESPONSE:',
+        bookingResponse.status,
+        bookingData
+      );
+
+      if (!bookingResponse.ok) {
+        throw new Error(
+          bookingData.reason ||
+            bookingData.error ||
+            'Failed to create booking'
+        );
+      }
+
+      const bookingId = bookingData.booking?.id;
+
+      if (!bookingId) {
+        throw new Error(
+          'Booking ID was not returned by server'
+        );
+      }
+
+      // ---------------------------------------------
+      // STEP 2: Process payment
+      // ---------------------------------------------
+      const paymentResponse = await fetch(
+        `${API_BASE_URL}/api/payments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            booking_id: bookingId,
+            payment_method: paymentMethod,
+            user_id: currentUser.id,
+          }),
+        }
+      );
+
+      const paymentData = await paymentResponse.json();
+
+      console.log(
+        'PAYMENT RESPONSE:',
+        paymentResponse.status,
+        paymentData
+      );
+
+      if (!paymentResponse.ok) {
+        throw new Error(
+          paymentData.reason ||
+            paymentData.error ||
+            'Payment failed'
+        );
+      }
+
+      // ---------------------------------------------
+      // STEP 3: Refresh Neon data
+      // ---------------------------------------------
+      await fetchData();
+
+      console.log(
+        '✅ BOOKING + PAYMENT SUCCESS'
+      );
+
+      console.log(
+        'Active booking:',
+        paymentData.booking
+      );
+    } catch (error) {
+      console.error(
+        '❌ Booking/payment error:',
+        error
+      );
+
+      throw error;
     }
+  };
 
-    await fetchData();
-  } catch (error) {
-    console.error('Booking error:', error);
-    throw error;
-  }
-};
-
-    
   // -----------------------------
   // Extend booking
   // -----------------------------
@@ -225,16 +330,24 @@ const handleBookSlot = async (
       const data = await response.json();
 
       if (!response.ok) {
-  console.error('BOOKING API ERROR:', response.status, data);
+        console.error(
+          'BOOKING API ERROR:',
+          response.status,
+          data
+        );
 
-  throw new Error(
-    JSON.stringify(data)
-  );
-}
+        throw new Error(
+          JSON.stringify(data)
+        );
+      }
 
       await fetchData();
     } catch (error) {
-      console.error('Extend booking error:', error);
+      console.error(
+        'Extend booking error:',
+        error
+      );
+
       throw error;
     }
   };
@@ -242,7 +355,9 @@ const handleBookSlot = async (
   // -----------------------------
   // Cancel booking
   // -----------------------------
-  const handleCancelBooking = async (bookingId: string) => {
+  const handleCancelBooking = async (
+    bookingId: string
+  ) => {
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/bookings/cancel/`,
@@ -269,7 +384,11 @@ const handleBookSlot = async (
 
       await fetchData();
     } catch (error) {
-      console.error('Cancel booking error:', error);
+      console.error(
+        'Cancel booking error:',
+        error
+      );
+
       throw error;
     }
   };
@@ -444,6 +563,7 @@ const handleBookSlot = async (
         slots={slots}
         onBookSlot={handleBookSlot}
       />
+
       {/* Footer */}
       <Footer />
     </div>

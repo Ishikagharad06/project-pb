@@ -25,6 +25,21 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<string>('upi');
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState<string | null>(null);
 
+  const neonLocations = Array.from(
+  new Map(
+    slots.map(slot => [
+      slot.parking_id,
+      {
+        id: slot.parking_id,
+        name: slot.parking_name || slot.location_name || 'Parking Spot',
+        available_slots_count: slots.filter(
+          s => s.parking_id === slot.parking_id && s.status === 'available'
+        ).length
+      }
+    ])
+  ).values()
+);
+
   const filteredSlots = slots.filter(s => {
     const matchesLoc =
       selectedLocation === 'all' ||
@@ -37,16 +52,29 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
   });
 
   const handleConfirmBooking = async () => {
-    if (!bookingSlot) return;
-    try {
-      await onBookSlot(bookingSlot.id, vehicleNumber, durationHours);
-      setBookingSuccessMsg(`Successfully reserved Slot ${bookingSlot.slot_number} at ${bookingSlot.parking_name || bookingSlot.location_name}!`);
-      setBookingSlot(null);
-      setTimeout(() => setBookingSuccessMsg(null), 5000);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  if (!bookingSlot) return;
+
+  try {
+    await onBookSlot(
+  bookingSlot.id,
+  vehicleNumber,
+  durationHours,
+  paymentMethod
+);
+
+    setBookingSuccessMsg(
+      `Successfully reserved Slot ${bookingSlot.slot_number} at ${
+        bookingSlot.parking_name || bookingSlot.location_name
+      }!`
+    );
+
+    setBookingSlot(null);
+
+    setTimeout(() => setBookingSuccessMsg(null), 5000);
+  } catch (err) {
+    console.error(err);
+  }
+};
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 w-full flex flex-col gap-8">
@@ -99,7 +127,7 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
           >
             All Locations
           </button>
-          {locations.map(loc => (
+          {neonLocations.map(loc => (
             <button
               key={loc.id}
               onClick={() => setSelectedLocation(loc.id)}
@@ -122,6 +150,7 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
             className="bg-[#222a3d] text-white border border-white/10 text-xs rounded-lg px-3 py-1.5 font-bold focus:outline-none focus:border-[#66daba]"
           >
             <option value="all">All Types</option>
+            <option value="car">Car</option>
             <option value="regular">Regular</option>
             <option value="ev">EV Charging</option>
             <option value="disabled">Disabled Access</option>
@@ -133,6 +162,7 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredSlots.map(slot => {
           const isFree = slot.status === 'available';
+          const isMaintenance = slot.status === 'maintenance';
           return (
             <div
               key={slot.id}
@@ -154,20 +184,26 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
 
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                    isFree
-                      ? 'bg-[#66daba]/20 text-[#66daba] border border-[#66daba]/40'
-                      : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                  }`}
+  isFree
+    ? 'bg-[#66daba]/20 text-[#66daba] border border-[#66daba]/40'
+    : isMaintenance
+      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
+      : 'bg-red-500/20 text-red-400 border border-red-500/40'
+}`}
                 >
                   {isFree ? (
-                    <>
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Vacant
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-3.5 h-3.5" /> Occupied
-                    </>
-                  )}
+  <>
+    <CheckCircle2 className="w-3.5 h-3.5" /> Vacant
+  </>
+) : isMaintenance ? (
+  <>
+    <Clock className="w-3.5 h-3.5" /> Maintenance
+  </>
+) : (
+  <>
+    <XCircle className="w-3.5 h-3.5" /> Occupied
+  </>
+)}
                 </span>
               </div>
 
@@ -182,21 +218,21 @@ export const ParkingFinder: React.FC<ParkingFinderProps> = ({
               </div>
 
               {isFree ? (
-                <button
-                  onClick={() => setBookingSlot(slot)}
-                  className="w-full bg-[#66daba] text-[#00382c] font-bold text-xs uppercase tracking-wider py-3 rounded-xl hover:bg-[#84f7d5] transition-colors flex items-center justify-center gap-2"
-                >
-                  <Car className="w-4 h-4" />
-                  Book Now
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="w-full bg-[#222a3d] text-[#bccac3] font-bold text-xs uppercase tracking-wider py-3 rounded-xl cursor-not-allowed opacity-60"
-                >
-                  Currently Occupied
-                </button>
-              )}
+  <button
+    onClick={() => setBookingSlot(slot)}
+    className="w-full bg-[#66daba] text-[#00382c] font-bold text-xs uppercase tracking-wider py-3 rounded-xl hover:bg-[#84f7d5] transition-colors flex items-center justify-center gap-2"
+  >
+    <Car className="w-4 h-4" />
+    Book Now
+  </button>
+) : (
+  <button
+    disabled
+    className="w-full bg-[#222a3d] text-[#bccac3] font-bold text-xs uppercase py-3 rounded-xl cursor-not-allowed opacity-60"
+  >
+    {isMaintenance ? 'Under Maintenance' : 'Currently Occupied'}
+  </button>
+)}
             </div>
           );
         })}
