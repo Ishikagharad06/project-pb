@@ -533,7 +533,7 @@ export async function getNeonSlots(locationId?: string) {
     )
 
     ORDER BY
-    export async  pl.name,
+      pl.name,
       ps.slot_number
     `,
     [locationId || null]
