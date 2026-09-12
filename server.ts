@@ -1363,32 +1363,29 @@ async function startServer() {
    STARTUP
 ============================================================ */
 
-if (!process.env.VERCEL) {
+if (process.env.VERCEL) {
+  // Vercel handles the serverless invocation itself.
+  // Do not call app.listen() or run local startup checks here.
+  const distPath = path.join(process.cwd(), 'dist');
+
+  app.use(express.static(distPath));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  // Local development: run database checks and start the Express server.
   testNeonConnection()
-    .then(() =>
-      testDatabaseTables()
-    )
-    .then(() =>
-      inspectParkingSlots()
-    )
-    .then(() =>
-      inspectParkingTables()
-    )
-    .then(() =>
-      inspectParkingData()
-    )
-    .then(() =>
-      ensurePaymentsTable()
-    )
-    .then(() =>
-      completeExpiredNeonBookings()
-    )
-    .then(() =>
-      startServer()
-    )
+    .then(() => testDatabaseTables())
+    .then(() => inspectParkingSlots())
+    .then(() => inspectParkingTables())
+    .then(() => inspectParkingData())
+    .then(() => ensurePaymentsTable())
+    .then(() => completeExpiredNeonBookings())
+    .then(() => startServer())
     .then(() => {
       /*
-       * Automatically release expired slots.
+       * Automatically release expired slots locally.
        */
       setInterval(() => {
         completeExpiredNeonBookings()
