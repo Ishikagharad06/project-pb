@@ -2,7 +2,6 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 import { db } from './src/db/store.js';
@@ -1307,21 +1306,15 @@ app.post(
 ============================================================ */
 
 async function startServer() {
-  if (
-    process.env.NODE_ENV !==
-    'production'
-  ) {
-    const vite =
-      await createViteServer({
-        server: {
-          middlewareMode: true
-        },
-        appType: 'spa'
-      });
+  if (process.env.NODE_ENV !== 'production') {
+  const { createServer: createViteServer } = await import('vite');
 
-    app.use(
-      vite.middlewares
-    );
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa'
+  });
+
+  app.use(vite.middlewares);
   } else {
     const distPath =
       path.join(
