@@ -104,6 +104,9 @@ export default function App() {
 
       const userId = currentUser?.id || '';
 
+      console.log("CURRENT USER:", currentUser);
+console.log("CURRENT USER ID:", currentUser?.id);
+
       const [
         locationsResponse,
         slotsResponse,
@@ -323,6 +326,7 @@ export default function App() {
           body: JSON.stringify({
             booking_id: bookingId,
             hours,
+            user_id: currentUser?.id,
           }),
         }
       );
