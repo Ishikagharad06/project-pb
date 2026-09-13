@@ -35,9 +35,10 @@ const app = express();
 const PORT = 3000;
 
 /*
- * IMPORTANT:
- * This is the Neon demo user currently used by the frontend.
- * It exists in the Neon users table.
+ * Default Neon demo user.
+ *
+ * This user exists in the Neon users table and is used
+ * when the frontend does not send a user_id.
  */
 const DEFAULT_NEON_USER_ID =
   '8a1f636a-f688-4192-a9f9-41113a61761b';
@@ -50,10 +51,12 @@ app.use(express.json());
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
+
   res.header(
     'Access-Control-Allow-Headers',
     'Origin, X-Requested-With, Content-Type, Accept'
   );
+
   res.header(
     'Access-Control-Allow-Methods',
     'GET, POST, PUT, DELETE, OPTIONS'
@@ -83,6 +86,48 @@ if (process.env.GEMINI_API_KEY) {
       err
     );
   }
+}
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+/*
+ * Get a Neon user and their role.
+ */
+async function getNeonUser(userId: string) {
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      full_name,
+      email,
+      role
+    FROM users
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  return result.rows[0] || null;
+}
+
+/*
+ * Resolve the user ID sent by the frontend.
+ *
+ * For the current demo, the frontend sends user_id.
+ * If it is missing, the default Neon demo user is used.
+ */
+function resolveUserId(value: unknown): string {
+  if (
+    typeof value === 'string' &&
+    value.trim()
+  ) {
+    return value.trim();
+  }
+
+  return DEFAULT_NEON_USER_ID;
 }
 
 /* ============================================================
@@ -172,7 +217,11 @@ function detectIntent(message: string): string {
   for (const [intent, keywords] of Object.entries(
     INTENT_KEYWORDS
   )) {
-    if (keywords.some(keyword => text.includes(keyword))) {
+    if (
+      keywords.some(keyword =>
+        text.includes(keyword)
+      )
+    ) {
       return intent;
     }
   }
@@ -204,7 +253,9 @@ function extractLocation(
 function extractSlotId(
   message: string
 ): string | undefined {
-  const match = message.match(/\b([A-Za-z]\d)\b/);
+  const match = message.match(
+    /\b([A-Za-z]\d)\b/
+  );
 
   return match
     ? match[1].toUpperCase()
@@ -247,9 +298,13 @@ function generateTemplateReply(
   }
 
   if (intent === 'booking') {
-    const result = data.booking_result;
+    const result =
+      data.booking_result;
 
-    if (result && result.success) {
+    if (
+      result &&
+      result.success
+    ) {
       return (
         `🎉 Success! Slot ${
           result.booking.slot_number
@@ -261,15 +316,20 @@ function generateTemplateReply(
 
     return (
       `Sorry, I couldn't book that slot: ${
-        result?.reason || 'slot is unavailable'
+        result?.reason ||
+        'slot is unavailable'
       }.`
     );
   }
 
   if (intent === 'extension') {
-    const result = data.extension_result;
+    const result =
+      data.extension_result;
 
-    if (result && result.success) {
+    if (
+      result &&
+      result.success
+    ) {
       return (
         `⏰ Booking extended until ${
           new Date(
@@ -286,7 +346,8 @@ function generateTemplateReply(
 
     return (
       `Could not extend booking: ${
-        result?.reason || 'No active booking found'
+        result?.reason ||
+        'No active booking found'
       }.`
     );
   }
@@ -315,324 +376,382 @@ function generateTemplateReply(
 
 /* ============================================================
    AUTH
-   NOTE:
+   ============================================================
+
    Existing authentication remains backed by local db.
-   Pay & Park uses Neon.
+
+   Pay & Park booking data is backed by Neon.
+
+   IMPORTANT:
+   The current frontend must provide a Neon user UUID
+   when creating/fetching Neon bookings.
 ============================================================ */
 
-app.post('/api/auth/google', (req, res) => {
-  const {
-    email,
-    name,
-    avatarUrl
-  } = req.body;
+app.post(
+  '/api/auth/google',
+  (req, res) => {
+    const {
+      email,
+      name,
+      avatarUrl
+    } = req.body;
 
-  if (!email || typeof email !== 'string') {
-    return res.status(400).json({
-      success: false,
-      reason: 'Valid Gmail/Google email address is required'
+    if (
+      !email ||
+      typeof email !== 'string'
+    ) {
+      return res.status(400).json({
+        success: false,
+        reason:
+          'Valid Gmail/Google email address is required'
+      });
+    }
+
+    const result =
+      db.googleAuthUser(
+        email,
+        name,
+        avatarUrl
+      );
+
+    res.json({
+      success: true,
+      user: result.user,
+      isNew: result.isNew,
+      message: result.isNew
+        ? 'Welcome to ParkBy! Your account has been created.'
+        : `Welcome back, ${result.user.name}!`
     });
   }
+);
 
-  const result = db.googleAuthUser(
-    email,
-    name,
-    avatarUrl
-  );
-
-  res.json({
-    success: true,
-    user: result.user,
-    isNew: result.isNew,
-    message: result.isNew
-      ? 'Welcome to ParkBy! Your account has been created.'
-      : `Welcome back, ${result.user.name}!`
-  });
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Successfully signed out'
-  });
-});
-
-app.get('/api/users', (req, res) => {
-  res.json({
-    success: true,
-    users: db.getUsers()
-  });
-});
-
-app.post('/api/auth/signup', (req, res) => {
-  const {
-    name,
-    email,
-    password,
-    role,
-    phone
-  } = req.body;
-
-  if (!name || !email) {
-    return res.status(400).json({
-      success: false,
-      reason: 'Name and email are required'
+app.post(
+  '/api/auth/logout',
+  (req, res) => {
+    res.json({
+      success: true,
+      message:
+        'Successfully signed out'
     });
   }
+);
 
-  const result = db.registerUser(
-    name,
-    email,
-    password,
-    role,
-    phone
-  );
-
-  if (result.success) {
-    res.json(result);
-  } else {
-    res.status(400).json(result);
-  }
-});
-
-app.post('/api/auth/login', (req, res) => {
-  const {
-    email,
-    password
-  } = req.body;
-
-  if (!email) {
-    return res.status(400).json({
-      success: false,
-      reason: 'Email is required'
+app.get(
+  '/api/users',
+  (req, res) => {
+    res.json({
+      success: true,
+      users: db.getUsers()
     });
   }
+);
 
-  const result = db.loginUser(
-    email,
-    password
-  );
+app.post(
+  '/api/auth/signup',
+  (req, res) => {
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone
+    } = req.body;
 
-  if (result.success) {
-    res.json(result);
-  } else {
-    res.status(400).json(result);
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        reason:
+          'Name and email are required'
+      });
+    }
+
+    const result =
+      db.registerUser(
+        name,
+        email,
+        password,
+        role,
+        phone
+      );
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
   }
-});
+);
+
+app.post(
+  '/api/auth/login',
+  (req, res) => {
+    const {
+      email,
+      password
+    } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        reason:
+          'Email is required'
+      });
+    }
+
+    const result =
+      db.loginUser(
+        email,
+        password
+      );
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  }
+);
 
 /* ============================================================
    HEALTH
 ============================================================ */
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'Smart Parking Assistant Backend',
-    database: 'Neon PostgreSQL'
-  });
-});
+app.get(
+  '/api/health',
+  (req, res) => {
+    res.json({
+      status: 'ok',
+      service:
+        'Smart Parking Assistant Backend',
+      database:
+        'Neon PostgreSQL'
+    });
+  }
+);
 
 /* ============================================================
    NEON PARKING LOCATIONS
 ============================================================ */
 
-app.get('/api/locations', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT
-        pl.id,
-        pl.name,
-        pl.address,
-        pl.city,
-        pl.latitude,
-        pl.longitude,
-        pl.total_slots,
-        pl.opening_time,
-        pl.closing_time,
-        pl.status,
-        COUNT(ps.id) FILTER (
-          WHERE ps.status = 'available'
-        ) AS available_slots_count
-      FROM parking_locations pl
-      LEFT JOIN parking_slots ps
-        ON ps.parking_id = pl.id
-      GROUP BY pl.id
-      ORDER BY pl.name
-    `);
+app.get(
+  '/api/locations',
+  async (req, res) => {
+    try {
+      const result =
+        await pool.query(`
+          SELECT
+            pl.id,
+            pl.name,
+            pl.address,
+            pl.city,
+            pl.latitude,
+            pl.longitude,
+            pl.total_slots,
+            pl.opening_time,
+            pl.closing_time,
+            pl.status,
 
-    res.json(
-      result.rows.map(row => ({
-        ...row,
-        total_slots: Number(row.total_slots || 0),
-        available_slots_count: Number(
-          row.available_slots_count || 0
-        )
-      }))
-    );
-  } catch (error) {
-    console.error(
-      '❌ Failed to fetch Neon locations:',
-      error
-    );
+            COUNT(ps.id) FILTER (
+              WHERE ps.status = 'available'
+            ) AS available_slots_count
 
-    res.status(500).json({
-      success: false,
-      reason: 'Failed to fetch parking locations'
-    });
+          FROM parking_locations pl
+
+          LEFT JOIN parking_slots ps
+            ON ps.parking_id = pl.id
+
+          GROUP BY pl.id
+
+          ORDER BY pl.name
+        `);
+
+      res.json(
+        result.rows.map(row => ({
+          ...row,
+
+          total_slots:
+            Number(
+              row.total_slots || 0
+            ),
+
+          available_slots_count:
+            Number(
+              row.available_slots_count ||
+              0
+            )
+        }))
+      );
+    } catch (error) {
+      console.error(
+        '❌ Failed to fetch Neon locations:',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        reason:
+          'Failed to fetch parking locations'
+      });
+    }
   }
-});
+);
 
 /* ============================================================
    NEON SLOTS
 ============================================================ */
 
-app.get('/api/slots', async (req, res) => {
-  try {
-    const {
-      location,
-      type
-    } = req.query;
+app.get(
+  '/api/slots',
+  async (req, res) => {
+    try {
+      const {
+        location,
+        type
+      } = req.query;
 
-    const slots = await getNeonSlots(
-      location
-        ? String(location)
-        : undefined
-    );
+      const slots =
+        await getNeonSlots(
+          location
+            ? String(location)
+            : undefined
+        );
 
-    const filteredSlots = type
-      ? slots.filter(
-          slot =>
-            slot.slot_type === String(type)
-        )
-      : slots;
+      const filteredSlots =
+        type
+          ? slots.filter(
+              slot =>
+                slot.slot_type ===
+                String(type)
+            )
+          : slots;
 
-    res.json(filteredSlots);
-  } catch (error) {
-    console.error(
-      '❌ Failed to fetch slots from Neon:',
-      error
-    );
+      res.json(
+        filteredSlots
+      );
+    } catch (error) {
+      console.error(
+        '❌ Failed to fetch slots from Neon:',
+        error
+      );
 
-    res.status(500).json({
-      success: false,
-      reason: 'Failed to fetch parking slots'
-    });
+      res.status(500).json({
+        success: false,
+        reason:
+          'Failed to fetch parking slots'
+      });
+    }
   }
-});
+);
 
 /* ============================================================
    SLOT CREATION
-   Kept for existing UI compatibility.
+   Existing UI compatibility.
 ============================================================ */
 
-app.post('/api/slots', (req, res) => {
-  const {
-    parking_id,
-    slot_number,
-    slot_type,
-    price_per_hr
-  } = req.body;
+app.post(
+  '/api/slots',
+  (req, res) => {
+    const {
+      parking_id,
+      slot_number,
+      slot_type,
+      price_per_hr
+    } = req.body;
 
-  if (!parking_id || !slot_number) {
-    return res.status(400).json({
-      success: false,
-      reason:
-        'Parking location and slot number are required'
+    if (
+      !parking_id ||
+      !slot_number
+    ) {
+      return res.status(400).json({
+        success: false,
+        reason:
+          'Parking location and slot number are required'
+      });
+    }
+
+    const newSlot =
+      db.addSlot({
+        parking_id,
+        slot_number,
+        slot_type,
+        price_per_hr:
+          Number(
+            price_per_hr
+          ) || 20
+      });
+
+    res.status(201).json({
+      success: true,
+      slot: newSlot
     });
   }
+);
 
-  const newSlot = db.addSlot({
-    parking_id,
-    slot_number,
-    slot_type,
-    price_per_hr:
-      Number(price_per_hr) || 20
-  });
-
-  res.status(201).json({
-    success: true,
-    slot: newSlot
-  });
-});
-
-app.get('/api/pricing', (req, res) => {
-  res.json(db.getPricingRules());
-});
+app.get(
+  '/api/pricing',
+  (req, res) => {
+    res.json(
+      db.getPricingRules()
+    );
+  }
+);
 
 /* ============================================================
-   NEON BOOKINGS
+   USER BOOKINGS
 ============================================================ */
 
 /*
- * This returns booking information in the shape expected
- * by ActiveBookings.tsx:
+ * Normal user endpoint.
  *
- * slot_number
- * parking_name
- * vehicle_number
- * total_amount
- * scheduled_end_time
- * status
+ * Returns ONLY bookings belonging to the requested
+ * Neon user.
+ *
+ * The current frontend sends user_id.
  */
 app.get(
   '/api/bookings/my',
   async (req, res) => {
     try {
+      /*
+       * Complete anything that expired before
+       * fetching the booking list.
+       */
       await completeExpiredNeonBookings();
 
-      const userId = req.query.user_id
-        ? String(req.query.user_id)
-        : DEFAULT_NEON_USER_ID;
-
-      const bookings =
-        await getNeonUserBookings(userId);
-
-      const enrichedBookings =
-        await Promise.all(
-          bookings.map(async booking => {
-            const details =
-              await pool.query(
-                `
-                SELECT
-                  b.id,
-                  b.start_time,
-                  b.scheduled_end_time,
-                  b.actual_end_time,
-                  b.status,
-                  b.base_amount,
-                  b.extension_amount,
-                  b.total_amount,
-                  b.parking_id,
-                  b.slot_id,
-                  b.user_id,
-                  b.vehicle_id,
-
-                  pl.name AS parking_name,
-                  ps.slot_number,
-                  ps.slot_type,
-                  v.registration_number AS vehicle_number
-
-                FROM bookings b
-
-                LEFT JOIN parking_locations pl
-                  ON b.parking_id = pl.id
-
-                LEFT JOIN parking_slots ps
-                  ON b.slot_id = ps.id
-
-                LEFT JOIN vehicles v
-                  ON b.vehicle_id = v.id
-
-                WHERE b.id = $1
-                `,
-                [booking.id]
-              );
-
-            return details.rows[0] || booking;
-          })
+      const userId =
+        resolveUserId(
+          req.query.user_id
         );
 
-      res.json(enrichedBookings);
+      /*
+       * Make sure this user exists in Neon.
+       */
+      const user =
+        await getNeonUser(
+          userId
+        );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          reason:
+            'Neon user not found'
+        });
+      }
+
+      /*
+       * IMPORTANT:
+       * getNeonUserBookings(userId)
+       * filters by user_id.
+       */
+      const bookings =
+        await getNeonUserBookings(
+          userId
+        );
+
+      res.json(
+        bookings
+      );
     } catch (error) {
       console.error(
         '❌ Failed to fetch bookings from Neon:',
@@ -641,7 +760,86 @@ app.get(
 
       res.status(500).json({
         success: false,
-        reason: 'Failed to fetch bookings'
+        reason:
+          'Failed to fetch bookings'
+      });
+    }
+  }
+);
+
+/* ============================================================
+   ADMIN — ALL BOOKINGS
+============================================================ */
+
+/*
+ * Admin endpoint.
+ *
+ * Example:
+ *
+ * GET /api/admin/bookings?user_id=ADMIN_UUID
+ *
+ * The user_id must belong to a Neon user whose
+ * role is "admin".
+ */
+app.get(
+  '/api/admin/bookings',
+  async (req, res) => {
+    try {
+      const adminUserId =
+        resolveUserId(
+          req.query.user_id
+        );
+
+      const admin =
+        await getNeonUser(
+          adminUserId
+        );
+
+      if (!admin) {
+        return res.status(404).json({
+          success: false,
+          reason:
+            'Admin user not found'
+        });
+      }
+
+      /*
+       * Server-side role check.
+       */
+      if (
+        String(
+          admin.role
+        ).toLowerCase() !==
+        'admin'
+      ) {
+        return res.status(403).json({
+          success: false,
+          reason:
+            'Admin access required'
+        });
+      }
+
+      /*
+       * No user ID means:
+       * return ALL bookings.
+       */
+      const bookings =
+        await getNeonUserBookings();
+
+      res.json({
+        success: true,
+        bookings
+      });
+    } catch (error) {
+      console.error(
+        '❌ Failed to fetch admin bookings:',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        reason:
+          'Failed to fetch admin bookings'
       });
     }
   }
@@ -662,7 +860,10 @@ app.post(
         user_id
       } = req.body;
 
-      if (!slot_id || !duration) {
+      if (
+        !slot_id ||
+        !duration
+      ) {
         return res.status(400).json({
           success: false,
           reason:
@@ -671,7 +872,42 @@ app.post(
       }
 
       const userId =
-        user_id || DEFAULT_NEON_USER_ID;
+        resolveUserId(
+          user_id
+        );
+
+      /*
+       * Make sure the Neon user exists.
+       */
+      const user =
+        await getNeonUser(
+          userId
+        );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          reason:
+            'Neon user not found'
+        });
+      }
+
+      /*
+       * Vehicle number is required for
+       * a meaningful booking.
+       */
+      if (
+        !vehicle_number ||
+        typeof vehicle_number !==
+          'string' ||
+        !vehicle_number.trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          reason:
+            'Vehicle number is required'
+        });
+      }
 
       const slot =
         await getNeonSlotById(
@@ -681,11 +917,15 @@ app.post(
       if (!slot) {
         return res.status(404).json({
           success: false,
-          reason: 'Slot not found'
+          reason:
+            'Slot not found'
         });
       }
 
-      if (slot.status !== 'available') {
+      if (
+        slot.status !==
+        'available'
+      ) {
         return res.status(400).json({
           success: false,
           reason:
@@ -693,9 +933,13 @@ app.post(
         });
       }
 
-      const hours = Number(duration);
+      const hours =
+        Number(duration);
 
-      if (!Number.isFinite(hours) || hours <= 0) {
+      if (
+        !Number.isFinite(hours) ||
+        hours <= 0
+      ) {
         return res.status(400).json({
           success: false,
           reason:
@@ -704,7 +948,9 @@ app.post(
       }
 
       const pricePerHr =
-        Number(slot.price_per_hr) || 0;
+        Number(
+          slot.price_per_hr
+        ) || 0;
 
       const baseAmount =
         Math.round(
@@ -713,7 +959,8 @@ app.post(
             100
         ) / 100;
 
-      const now = new Date();
+      const now =
+        new Date();
 
       const scheduledEnd =
         new Date(
@@ -725,32 +972,50 @@ app.post(
         );
 
       /*
-       * Create pending booking.
-       * Vehicle must belong to this Neon user.
+       * createNeonBooking:
+       *
+       * 1. Finds the vehicle for this user.
+       * 2. If it doesn't exist, creates it.
+       * 3. Creates the booking using vehicle_id.
        */
       const booking =
         await createNeonBooking({
-          id: crypto.randomUUID(),
-          user_id: userId,
-          parking_id: slot.parking_id,
+          id:
+            crypto.randomUUID(),
+
+          user_id:
+            userId,
+
+          parking_id:
+            slot.parking_id,
+
           parking_name:
             slot.parking_name ||
             'ParkBy Hub',
-          slot_id: slot.id,
+
+          slot_id:
+            slot.id,
+
           slot_number:
             slot.slot_number,
+
           vehicle_number:
-            vehicle_number ||
-            'UNKNOWN',
-          start_time: now,
+            vehicle_number
+              .trim()
+              .toUpperCase(),
+
+          start_time:
+            now,
+
           scheduled_end_time:
             scheduledEnd,
+
           base_amount:
             baseAmount
         });
 
       /*
-       * Reserve slot immediately.
+       * Reserve the slot immediately.
        */
       await markSlotOccupied(
         slot.id
@@ -765,24 +1030,6 @@ app.post(
         '❌ Failed to create booking:',
         error
       );
-
-      /*
-       * Vehicle does not exist for user.
-       * Return 400 instead of 500.
-       */
-      if (
-        error?.message?.includes(
-          'Vehicle'
-        ) &&
-        error?.message?.includes(
-          'not found for user'
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          reason: error.message
-        });
-      }
 
       res.status(500).json({
         success: false,
@@ -827,7 +1074,24 @@ app.post(
       if (!booking) {
         return res.status(404).json({
           success: false,
-          reason: 'Booking not found'
+          reason:
+            'Booking not found'
+        });
+      }
+
+      /*
+       * If user_id was provided, make sure the
+       * payment belongs to the same booking owner.
+       */
+      if (
+        user_id &&
+        String(user_id) !==
+          String(booking.user_id)
+      ) {
+        return res.status(403).json({
+          success: false,
+          reason:
+            'You cannot pay for another user\'s booking'
         });
       }
 
@@ -844,9 +1108,11 @@ app.post(
 
       /*
        * DEMO PAYMENT
+       *
        * Always succeeds for the internship demo.
        */
-      const paymentSucceeded = true;
+      const paymentSucceeded =
+        true;
 
       const transactionId =
         'TXN-' +
@@ -857,29 +1123,39 @@ app.post(
 
       const payment =
         await createNeonPayment({
-          id: crypto.randomUUID(),
+          id:
+            crypto.randomUUID(),
+
           booking_id:
             booking.id,
+
           user_id:
-            user_id ||
             booking.user_id,
+
           amount:
             Number(
               booking.total_amount
             ),
-          payment_method,
+
+          payment_method:
+            payment_method,
+
           status:
             paymentSucceeded
               ? 'success'
               : 'failed',
+
           transaction_id:
             transactionId
         });
 
-      if (!paymentSucceeded) {
+      if (
+        !paymentSucceeded
+      ) {
         return res.status(402).json({
           success: false,
-          reason: 'Payment failed',
+          reason:
+            'Payment failed',
           payment
         });
       }
@@ -900,7 +1176,8 @@ app.post(
       res.json({
         success: true,
         payment,
-        booking: activeBooking
+        booking:
+          activeBooking
       });
     } catch (error: any) {
       console.error(
@@ -928,7 +1205,8 @@ app.post(
     try {
       const {
         booking_id,
-        hours
+        hours,
+        user_id
       } = req.body;
 
       if (!booking_id) {
@@ -936,6 +1214,34 @@ app.post(
           success: false,
           reason:
             'booking_id is required'
+        });
+      }
+
+      const booking =
+        await getNeonBookingById(
+          String(booking_id)
+        );
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          reason:
+            'Booking not found'
+        });
+      }
+
+      /*
+       * Prevent extending another user's booking.
+       */
+      if (
+        user_id &&
+        String(user_id) !==
+          String(booking.user_id)
+      ) {
+        return res.status(403).json({
+          success: false,
+          reason:
+            'You cannot extend another user\'s booking'
         });
       }
 
@@ -973,7 +1279,8 @@ app.post(
 
       res.json({
         success: true,
-        booking: updated
+        booking:
+          updated
       });
     } catch (error) {
       console.error(
@@ -999,7 +1306,8 @@ app.post(
   async (req, res) => {
     try {
       const {
-        booking_id
+        booking_id,
+        user_id
       } = req.body;
 
       if (!booking_id) {
@@ -1007,6 +1315,34 @@ app.post(
           success: false,
           reason:
             'booking_id is required'
+        });
+      }
+
+      const booking =
+        await getNeonBookingById(
+          String(booking_id)
+        );
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          reason:
+            'Booking not found'
+        });
+      }
+
+      /*
+       * Prevent cancelling another user's booking.
+       */
+      if (
+        user_id &&
+        String(user_id) !==
+          String(booking.user_id)
+      ) {
+        return res.status(403).json({
+          success: false,
+          reason:
+            'You cannot cancel another user\'s booking'
         });
       }
 
@@ -1025,7 +1361,8 @@ app.post(
 
       res.json({
         success: true,
-        booking: cancelled
+        booking:
+          cancelled
       });
     } catch (error) {
       console.error(
@@ -1054,7 +1391,9 @@ app.get(
         req.params.sessionId
       );
 
-    res.json(conv.messages);
+    res.json(
+      conv.messages
+    );
   }
 );
 
@@ -1070,7 +1409,8 @@ const handleChat = async (
 
   if (
     !message ||
-    typeof message !== 'string'
+    typeof message !==
+      'string'
   ) {
     return res.status(400).json({
       error:
@@ -1093,7 +1433,7 @@ const handleChat = async (
   > = {};
 
   /*
-   * Chat availability now uses Neon slots.
+   * Chat availability uses Neon slots.
    */
   if (
     intent === 'availability' ||
@@ -1110,7 +1450,9 @@ const handleChat = async (
       );
 
     const location =
-      extractLocation(message);
+      extractLocation(
+        message
+      );
 
     contextData.slots =
       location
@@ -1130,18 +1472,23 @@ const handleChat = async (
   }
 
   /*
-   * Chat booking remains the existing demo path.
-   * Pay & Park UI uses the Neon endpoints above.
+   * Existing demo chat booking path.
+   *
+   * Pay & Park UI uses Neon booking endpoints.
    */
   else if (
     intent === 'booking'
   ) {
     const slotId =
-      extractSlotId(message);
+      extractSlotId(
+        message
+      );
 
     if (slotId) {
       contextData.booking_result =
-        db.bookSlot(slotId);
+        db.bookSlot(
+          slotId
+        );
     } else {
       contextData.booking_result = {
         success: false,
@@ -1164,13 +1511,17 @@ const handleChat = async (
         );
 
     const slotId =
-      extractSlotId(message);
+      extractSlotId(
+        message
+      );
 
     const targetId =
       slotId ||
-      (activeBk
-        ? activeBk.id
-        : undefined);
+      (
+        activeBk
+          ? activeBk.id
+          : undefined
+      );
 
     if (targetId) {
       contextData.extension_result =
@@ -1197,14 +1548,16 @@ const handleChat = async (
     ].includes(intent)
   ) {
     contextData.faq_answer =
-      db.getFAQ(intent);
+      db.getFAQ(
+        intent
+      );
 
     contextData.pricing =
       db.getPricingRules();
   }
 
   /*
-   * Chat context.
+   * Existing local chat context.
    */
   contextData.active_bookings =
     db
@@ -1284,10 +1637,15 @@ const handleChat = async (
   );
 
   return res.json({
-    reply: botReply,
+    reply:
+      botReply,
+
     intent,
+
     session_id,
-    data: contextData
+
+    data:
+      contextData
   });
 };
 
@@ -1306,15 +1664,31 @@ app.post(
 ============================================================ */
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-  const { createServer: createViteServer } = await import('vite');
+  if (
+    process.env.NODE_ENV !==
+    'production'
+  ) {
+    const {
+      createServer:
+        createViteServer
+    } = await import(
+      'vite'
+    );
 
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa'
-  });
+    const vite =
+      await createViteServer({
+        server: {
+          middlewareMode:
+            true
+        },
 
-  app.use(vite.middlewares);
+        appType:
+          'spa'
+      });
+
+    app.use(
+      vite.middlewares
+    );
   } else {
     const distPath =
       path.join(
@@ -1357,29 +1731,76 @@ async function startServer() {
 ============================================================ */
 
 if (process.env.VERCEL) {
-  // Vercel handles the serverless invocation itself.
-  // Do not call app.listen() or run local startup checks here.
-  const distPath = path.join(process.cwd(), 'dist');
+  /*
+   * Vercel handles the serverless invocation.
+   *
+   * Do not call app.listen().
+   * Do not start the local 30-second timer.
+   */
 
-  app.use(express.static(distPath));
+  const distPath =
+    path.join(
+      process.cwd(),
+      'dist'
+    );
 
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+  app.use(
+    express.static(
+      distPath
+    )
+  );
+
+  app.get(
+    '*',
+    (req, res) => {
+      res.sendFile(
+        path.join(
+          distPath,
+          'index.html'
+        )
+      );
+    }
+  );
 } else {
-  // Local development: run database checks and start the Express server.
+  /*
+   * Local development.
+   *
+   * Run Neon checks, clean expired bookings,
+   * start Express, and run the expiry check
+   * every 30 seconds.
+   */
+
   testNeonConnection()
-    .then(() => testDatabaseTables())
-    .then(() => inspectParkingSlots())
-    .then(() => inspectParkingTables())
-    .then(() => inspectParkingData())
-    .then(() => ensurePaymentsTable())
-    .then(() => completeExpiredNeonBookings())
-    .then(() => startServer())
+
+    .then(() =>
+      testDatabaseTables()
+    )
+
+    .then(() =>
+      inspectParkingSlots()
+    )
+
+    .then(() =>
+      inspectParkingTables()
+    )
+
+    .then(() =>
+      inspectParkingData()
+    )
+
+    .then(() =>
+      ensurePaymentsTable()
+    )
+
+    .then(() =>
+      completeExpiredNeonBookings()
+    )
+
+    .then(() =>
+      startServer()
+    )
+
     .then(() => {
-      /*
-       * Automatically release expired slots locally.
-       */
       setInterval(() => {
         completeExpiredNeonBookings()
           .catch(err =>
@@ -1390,6 +1811,7 @@ if (process.env.VERCEL) {
           );
       }, 30_000);
     })
+
     .catch(error => {
       console.error(
         '❌ Database startup error:',

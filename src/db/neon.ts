@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import pg from 'pg';
+import crypto from 'crypto';
 
 const { Pool } = pg;
 
@@ -185,25 +186,57 @@ export async function createNeonBooking(params: {
   scheduled_end_time: Date;
   base_amount: number;
 }) {
-  // Find vehicle belonging to the selected Neon user.
-  const vehicleResult = await pool.query(
+  // ------------------------------------------------------------
+  // Find the vehicle for this user.
+  // If it doesn't exist, create it automatically.
+  // ------------------------------------------------------------
+
+  let vehicleResult = await pool.query(
     `
     SELECT id
     FROM vehicles
     WHERE user_id = $1
-      AND registration_number = $2
+      AND UPPER(registration_number) = UPPER($2)
     LIMIT 1
     `,
-    [params.user_id, params.vehicle_number]
+    [params.user_id, params.vehicle_number.trim()]
   );
 
-  if (vehicleResult.rows.length === 0) {
-    throw new Error(
-      `Vehicle ${params.vehicle_number} not found for user ${params.user_id}`
+  let vehicleId: string;
+
+  if (vehicleResult.rows.length > 0) {
+    // Existing vehicle
+    vehicleId = vehicleResult.rows[0].id;
+  } else {
+    // New vehicle entered by the user
+    vehicleId = crypto.randomUUID();
+
+    await pool.query(
+      `
+      INSERT INTO vehicles
+        (
+          id,
+          user_id,
+          registration_number,
+          vehicle_type,
+          model_name
+        )
+      VALUES
+        ($1, $2, $3, $4, $5)
+      `,
+      [
+        vehicleId,
+        params.user_id,
+        params.vehicle_number.trim().toUpperCase(),
+        'car',
+        'Unknown',
+      ]
     );
   }
 
-  const vehicleId = vehicleResult.rows[0].id;
+  // ------------------------------------------------------------
+  // Create the booking
+  // ------------------------------------------------------------
 
   const result = await pool.query(
     `
@@ -471,7 +504,7 @@ export async function completeExpiredNeonBookings() {
     SET
       status = 'completed',
       actual_end_time = NOW()
-    WHERE status = 'active'
+    WHERE status IN ('active', 'pending')
       AND scheduled_end_time <= NOW()
     RETURNING slot_id
     `
