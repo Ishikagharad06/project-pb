@@ -1,5 +1,16 @@
 # ParkBy — Database Context
 
+## This repository: Neon + MongoDB for X/Y smart parking
+
+In this Express app, **Neon** (`parking_locations` / `parking_slots`) remains primary. After each smart-parking change, occupancy is upserted into MongoDB database `parkby`:
+
+| Collection | Key | Purpose |
+|---|---|---|
+| `parking_status` | `unique_parking_id` (`X_PARKING`, `Y_PARKING`) | One document per lot, including the full slot list |
+| `parking_slots` | `slot_key` (`X1`…`X10`, `Y1`…`Y20`) | One document per slot; updates, never duplicate inserts |
+
+The website reads live status by overlaying those Mongo documents onto Neon slot rows (`overlaySlotsWithMongo` / `overlayLocationsWithMongo`). Slot IDs stay `X1`–`X10` and `Y1`–`Y20` in Flask, Neon `slot_number`, and Mongo `slot_key`.
+
 ParkBy deliberately splits its data across **three stores with different jobs**, rather than putting everything in one relational database:
 
 | Store | Holds | Why |

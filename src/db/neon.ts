@@ -523,7 +523,7 @@ export async function completeExpiredNeonBookings() {
     );
   }
 
-  return slotIds.length;
+  return slotIds;
 }
 
 // ============================================================

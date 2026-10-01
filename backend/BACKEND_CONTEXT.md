@@ -1,5 +1,21 @@
 # ParkBy — Backend Context
 
+## This repository (Express)
+
+`server.ts` is the API used by the ParkBy website. Smart-parking integration (minimum added surface):
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/api/live-parking` | Latest lot documents from MongoDB |
+| GET | `/api/smart-parking/state` | X/Y slot state from Neon |
+| POST | `/api/smart-parking/slots/:slotKey` | Set available/occupied: Neon, then Mongo upsert |
+| POST | `/api/smart-parking/slots/:slotKey/toggle` | Toggle one slot (same order) |
+| POST | `/api/smart-parking/parkings/:pid/reset` | Mark all slots in X or Y available |
+| POST | `/api/smart-parking/sync` | Apply a full Flask snapshot (Neon then Mongo) |
+| GET | `/api/slots`, `/api/locations` | Neon data with Mongo occupancy overlay |
+
+Failures return `neon_updated` / `mongo_updated` so a Mongo outage is not reported as a full success.
+
 The ParkBy backend is a **Django + Django REST Framework + Django Channels (ASGI)** application, paired with a separate **edge computer-vision layer** that runs on-site at each physical parking location. This document covers the cloud backend (Part A) and the edge subsystem (Part B) that feeds it.
 
 ---

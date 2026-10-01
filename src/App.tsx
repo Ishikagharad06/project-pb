@@ -98,9 +98,11 @@ export default function App() {
   // Fetch locations, slots,
   // and bookings from backend
   // -----------------------------
-  const fetchData = async () => {
+  const fetchData = async (showLoading = false) => {
     try {
-      setIsLoading(true);
+      if (showLoading) {
+        setIsLoading(true);
+      }
 
       const userId = currentUser?.id || '';
 
@@ -178,11 +180,11 @@ console.log("CURRENT USER ID:", currentUser?.id);
   // Initial data load
   // -----------------------------
   useEffect(() => {
-    fetchData();
+    fetchData(true);
 
     const interval = setInterval(() => {
-      fetchData();
-    }, 10000);
+      fetchData(false);
+    }, 3000);
 
     return () => {
       clearInterval(interval);

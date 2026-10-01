@@ -1,5 +1,21 @@
 # ParkBy — Technical Project Context
 
+## This repository (Express + Neon + Mongo live occupancy)
+
+This checkout’s running website is the **Vite + Express** app in `server.ts` / `src/`, with **Neon PostgreSQL** as the booking system of record. The Django/WebSocket architecture below remains product context; live slot occupancy for X Parking (10 slots) and Y Parking (20 slots) uses this path:
+
+```text
+scripts/smart_parking.py  (manual per-slot toggles X1–X10, Y1–Y20)
+        ↓ POST /api/smart-parking/slots/:slotKey
+Express (server.ts)
+        ↓ Neon parking_slots.status first
+        ↓ then MongoDB parkby.parking_slots + parkby.parking_status (upsert)
+ParkBy UI polls /api/slots and /api/locations every 3s
+        ↓ overlay Mongo status onto Neon rows
+```
+
+Optional continuous bridge: `scripts/save_to_mongo.py` polls Flask `/api/parkings` every 2s and POSTs `/api/smart-parking/sync` (Neon first, then Mongo). Credentials: `MONGODB_URI`, `MONGODB_DB_NAME` (default `parkby`) in `.env` only.
+
 ## 1. Summary
 
 ParkBy is a full-stack, real-time smart-parking platform made of **four cooperating layers**: an on-premises edge computer-vision layer, a Django cloud backend with a WebSocket real-time channel, a hybrid multi-database persistence layer, and a React SPA frontend.

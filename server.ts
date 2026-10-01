@@ -27,6 +27,27 @@ import {
   completeExpiredNeonBookings
 } from './src/db/neon.js';
 
+import {
+  describeMongoError,
+  getLiveParkingDocuments,
+  isMongoConfigured,
+  testMongoConnection
+} from './src/db/mongo.js';
+
+import {
+  applySmartParkingSnapshot,
+  ensureSmartParkingLots,
+  getSmartParkingState,
+  overlayLocationsWithMongo,
+  overlaySlotsWithMongo,
+  resetSmartParking,
+  setSmartSlotAvailability,
+  SmartParkingError,
+  syncSlotById,
+  syncSmartParkingToMongo,
+  toggleSmartSlot
+} from './src/db/smartParking.js';
+
 dotenv.config();
 
 console.log(
@@ -103,6 +124,51 @@ function resolveUserId(
   }
 
   return DEFAULT_NEON_USER_ID;
+}
+
+async function syncSmartSlotsQuietly(
+  slotIds: Array<string | null | undefined>
+) {
+  for (const slotId of slotIds) {
+    if (!slotId) {
+      continue;
+    }
+
+    try {
+      await syncSlotById(String(slotId));
+    } catch (error) {
+      console.error(
+        'MongoDB slot sync failed:',
+        describeMongoError(error)
+      );
+    }
+  }
+}
+
+function sendSmartParkingError(
+  res: Response,
+  error: unknown
+) {
+  if (error instanceof SmartParkingError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      reason: error.message,
+      neon_updated: error.neonUpdated,
+      mongo_updated: error.mongoUpdated
+    });
+  }
+
+  console.error('Smart parking error:', error);
+
+  return res.status(500).json({
+    success: false,
+    reason:
+      error instanceof Error
+        ? error.message
+        : 'Smart parking update failed',
+    neon_updated: false,
+    mongo_updated: false
+  });
 }
 
 async function getNeonUser(
@@ -568,8 +634,7 @@ app.get(
           ORDER BY pl.name
         `);
 
-      res.json(
-        result.rows.map(row => ({
+      const locations = result.rows.map(row => ({
           ...row,
           total_slots:
             Number(
@@ -580,8 +645,9 @@ app.get(
               row.available_slots_count ||
               0
             )
-        }))
-      );
+        }));
+
+      res.json(await overlayLocationsWithMongo(locations));
     } catch (error) {
       console.error(
         'Failed to fetch locations:',
@@ -592,6 +658,118 @@ app.get(
         success: false,
         reason:
           'Failed to fetch parking locations'
+      });
+    }
+  }
+);
+
+
+/* ============================================================
+   CREATE LOCATION — NEON
+============================================================ */
+
+app.post(
+  '/api/locations/',
+  async (req, res) => {
+    try {
+      const {
+        name,
+        address,
+        city,
+        total_slots
+      } = req.body;
+
+      if (
+        !name ||
+        !address ||
+        !city ||
+        total_slots === undefined ||
+        total_slots === null
+      ) {
+        return res.status(400).json({
+          success: false,
+          reason:
+            'Name, address, city and total_slots are required'
+        });
+      }
+
+      const totalSlots = Number(total_slots);
+
+      if (
+        !Number.isInteger(totalSlots) ||
+        totalSlots < 1
+      ) {
+        return res.status(400).json({
+          success: false,
+          reason:
+            'total_slots must be a positive whole number'
+        });
+      }
+
+      const locationId = crypto.randomUUID();
+
+      const result = await pool.query(
+        `
+        INSERT INTO parking_locations (
+          id,
+          name,
+          address,
+          city,
+          latitude,
+          longitude,
+          total_slots,
+          opening_time,
+          closing_time,
+          status
+        )
+        VALUES (
+  $1,
+  $2,
+  $3,
+  $4,
+  21.1458,
+  79.0882,
+  $5,
+  '00:00',
+  '23:59',
+  'active'
+)
+        RETURNING
+          id,
+          name,
+          address,
+          city,
+          latitude,
+          longitude,
+          total_slots,
+          opening_time,
+          closing_time,
+          status
+        `,
+        [
+          locationId,
+          String(name).trim(),
+          String(address).trim(),
+          String(city).trim(),
+          totalSlots
+        ]
+      );
+
+      return res.status(201).json({
+        success: true,
+        location: result.rows[0]
+      });
+    } catch (error: any) {
+      console.error(
+        'Failed to create parking location:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        reason:
+          error?.message ||
+          'Failed to create parking location'
       });
     }
   }
@@ -626,7 +804,7 @@ app.get(
             )
           : slots;
 
-      res.json(filtered);
+      res.json(await overlaySlotsWithMongo(filtered));
     } catch (error) {
       console.error(
         'Failed to fetch slots:',
@@ -638,6 +816,165 @@ app.get(
         reason:
           'Failed to fetch parking slots'
       });
+    }
+  }
+);
+
+/* ============================================================
+   SMART PARKING — NEON THEN MONGODB
+============================================================ */
+
+app.get(
+  '/api/live-parking',
+  async (req, res) => {
+    try {
+      if (!isMongoConfigured()) {
+        return res.status(503).json({
+          success: false,
+          reason:
+            'MongoDB is not configured'
+        });
+      }
+
+      const documents =
+        await getLiveParkingDocuments();
+
+      res.json({
+        success: true,
+        source: 'mongodb',
+        parkings: documents
+      });
+    } catch (error) {
+      console.error(
+        'Failed to fetch live parking from MongoDB:',
+        error
+      );
+
+      res.status(502).json({
+        success: false,
+        reason:
+          describeMongoError(error)
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/smart-parking/state',
+  async (req, res) => {
+    try {
+      const parkings =
+        await getSmartParkingState();
+
+      res.json({
+        success: true,
+        parkings
+      });
+    } catch (error) {
+      return sendSmartParkingError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+app.post(
+  '/api/smart-parking/slots/:slotKey',
+  async (req, res) => {
+    try {
+      const hasAvailable =
+        typeof req.body?.available ===
+        'boolean';
+      const hasStatus =
+        typeof req.body?.status ===
+        'string';
+
+      if (!hasAvailable && !hasStatus) {
+        return res.status(400).json({
+          success: false,
+          reason:
+            'Provide available (boolean) or status (available|occupied)'
+        });
+      }
+
+      const available = hasAvailable
+        ? req.body.available
+        : String(req.body.status)
+            .toLowerCase() ===
+          'available';
+
+      const result =
+        await setSmartSlotAvailability(
+          req.params.slotKey,
+          available
+        );
+
+      res.json(result);
+    } catch (error) {
+      return sendSmartParkingError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+app.post(
+  '/api/smart-parking/slots/:slotKey/toggle',
+  async (req, res) => {
+    try {
+      const result =
+        await toggleSmartSlot(
+          req.params.slotKey
+        );
+
+      res.json(result);
+    } catch (error) {
+      return sendSmartParkingError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+app.post(
+  '/api/smart-parking/parkings/:pid/reset',
+  async (req, res) => {
+    try {
+      const result =
+        await resetSmartParking(
+          req.params.pid
+        );
+
+      res.json(result);
+    } catch (error) {
+      return sendSmartParkingError(
+        res,
+        error
+      );
+    }
+  }
+);
+
+app.post(
+  '/api/smart-parking/sync',
+  async (req, res) => {
+    try {
+      const snapshot =
+        req.body?.parkings || req.body;
+      const result =
+        await applySmartParkingSnapshot(
+          snapshot
+        );
+
+      res.json(result);
+    } catch (error) {
+      return sendSmartParkingError(
+        res,
+        error
+      );
     }
   }
 );
@@ -705,7 +1042,12 @@ app.get(
       /*
        * Clean expired bookings first.
        */
-      await completeExpiredNeonBookings();
+      const expiredSlotIds =
+        await completeExpiredNeonBookings();
+
+      await syncSmartSlotsQuietly(
+        expiredSlotIds || []
+      );
 
       const userId =
         resolveUserId(
@@ -934,18 +1276,25 @@ app.post(
         });
       }
 
-      const slot =
+      const neonSlot =
         await getNeonSlotById(
           String(slot_id)
         );
 
-      if (!slot) {
+      if (!neonSlot) {
         return res.status(404).json({
           success: false,
           reason:
             'Slot not found'
         });
       }
+
+      const slot =
+        (
+          await overlaySlotsWithMongo([
+            neonSlot
+          ])
+        )[0];
 
       if (
         slot.status !==
@@ -1044,6 +1393,10 @@ app.post(
       await markSlotOccupied(
         slot.id
       );
+
+      await syncSmartSlotsQuietly([
+        slot.id
+      ]);
 
       res.status(201).json({
         success: true,
@@ -1379,6 +1732,10 @@ app.post(
             'Booking not found or already finalized'
         });
       }
+
+      await syncSmartSlotsQuietly([
+        cancelled.slot_id
+      ]);
 
       res.json({
         success: true,
@@ -1733,7 +2090,9 @@ const handleChat = async (
         'greeting'
     ) {
       const slots =
-        await getNeonSlots();
+        await overlaySlotsWithMongo(
+          await getNeonSlots()
+        );
 
       const available =
         slots.filter(
@@ -1850,7 +2209,9 @@ const handleChat = async (
         );
 
     contextData.all_locations =
-      await getNeonSlots();
+      await overlaySlotsWithMongo(
+        await getNeonSlots()
+      );
 
     let botReply = '';
 
@@ -2079,7 +2440,40 @@ if (process.env.VERCEL) {
     )
 
     .then(() =>
+      ensureSmartParkingLots()
+    )
+
+    .then(async () => {
+      if (!isMongoConfigured()) {
+        console.warn(
+          '⚠️  MONGODB_URI is missing — '
+          + 'smart-parking MongoDB sync disabled'
+        );
+        return;
+      }
+
+      try {
+        await testMongoConnection();
+        await syncSmartParkingToMongo();
+      } catch (mongoError) {
+        console.warn(
+          '⚠️  MongoDB connection failed '
+          + '(server will start without it):',
+          mongoError instanceof Error
+            ? mongoError.message
+            : mongoError
+        );
+      }
+    })
+
+    .then(() =>
       completeExpiredNeonBookings()
+    )
+
+    .then((expiredSlotIds) =>
+      syncSmartSlotsQuietly(
+        expiredSlotIds || []
+      )
     )
 
     .then(() =>
@@ -2093,6 +2487,11 @@ if (process.env.VERCEL) {
        */
       setInterval(() => {
         completeExpiredNeonBookings()
+          .then((slotIds) =>
+            syncSmartSlotsQuietly(
+              slotIds || []
+            )
+          )
           .catch(error =>
             console.error(
               'Auto-completion error:',
@@ -2109,6 +2508,25 @@ if (process.env.VERCEL) {
       );
 
       process.exit(1);
+    });
+}
+
+if (process.env.VERCEL) {
+  ensureSmartParkingLots()
+    .then(async () => {
+      if (!isMongoConfigured()) {
+        console.warn('MONGODB_URI is missing');
+        return;
+      }
+
+      await testMongoConnection();
+      await syncSmartParkingToMongo();
+    })
+    .catch((error) => {
+      console.error(
+        'Smart parking bootstrap error:',
+        error
+      );
     });
 }
 

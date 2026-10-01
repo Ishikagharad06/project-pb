@@ -1,5 +1,9 @@
 # ParkBy — Frontend Context
 
+## This repository (Vite SPA)
+
+`src/App.tsx` loads `/api/locations`, `/api/slots`, and bookings, then refreshes every **3 seconds** (without a full-page loading flash). `/api/slots` already overlays MongoDB occupancy, so toggling X5/Y12 in `scripts/smart_parking.py` shows up on the parking grid near-real-time. Existing booking, auth, and parking UI components are unchanged aside from that poll interval.
+
 ## 1. Stack
 
 | Concern | Tool / Library |

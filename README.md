@@ -96,3 +96,23 @@ ParkBy Project
 - **Admin Management**: Dynamically add parking locations and slots.
 - **Wallet & Bookings**: Instant booking, extensions, and wallet management.
 - **AI Parking Assistant**: Real-time rate and availability responder.
+
+---
+
+## Live occupancy (this checkout)
+
+The running app is `npm run dev` (Express on port 3000 + Vite). Per-slot occupancy for **X Parking (X1–X10)** and **Y Parking (Y1–Y20)** is:
+
+1. Toggled in `scripts/smart_parking.py` (http://127.0.0.1:5000)
+2. Written to **Neon** first
+3. Upserted to **MongoDB** (`parkby` database)
+4. Shown on the website via `/api/slots` (3s refresh)
+
+Set `MONGODB_URI` and `MONGODB_DB_NAME=parkby` in `.env` (see `.env.example`). Do not commit `.env`.
+
+```bash
+pip install -r scripts/requirements.txt
+python scripts/smart_parking.py
+# optional continuous poller:
+python scripts/save_to_mongo.py
+```
