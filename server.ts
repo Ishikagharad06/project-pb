@@ -95,7 +95,12 @@ app.use((req, res, next) => {
 ============================================================ */
 
 app.use((req, res, next) => {
-  if (process.env.VERCEL && req.url && !req.url.startsWith('/api')) {
+  const matchedPath = (req.headers['x-matched-path'] as string) || '';
+  if (matchedPath && matchedPath.startsWith('/api')) {
+    const queryIndex = req.url.indexOf('?');
+    const query = queryIndex !== -1 ? req.url.slice(queryIndex) : '';
+    req.url = matchedPath + query;
+  } else if (process.env.VERCEL && req.url && !req.url.startsWith('/api')) {
     req.url = `/api${req.url.startsWith('/') ? req.url : '/' + req.url}`;
   }
   next();
