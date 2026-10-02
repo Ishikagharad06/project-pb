@@ -26,7 +26,7 @@ export default function App() {
   // -----------------------------
   // Main application state
   // -----------------------------
-  const [activeTab, setActiveTab] = useState<string>('about');
+  const [activeTab, setActiveTab] = useState<string>('finder');
 
   const [locations, setLocations] = useState<ParkingLocation[]>([]);
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
