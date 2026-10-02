@@ -24,7 +24,7 @@ export const SMART_PARKINGS = {
     pid: 'X',
     name: 'X Parking',
     uniqueParkingId: 'X_PARKING',
-    slotCount: 20,
+    slotCount: 10,
     city: 'Nagpur',
     address: 'X Parking Lot',
   },
@@ -72,7 +72,7 @@ export function parseSlotKey(raw: string): {
 
   if (!match) {
     throw new SmartParkingError(
-      `Invalid slot ID '${raw}'. Use NH1-NH15 or X1-X20.`,
+      `Invalid slot ID '${raw}'. Use NH1-NH15 or X1-X10.`,
       400
     );
   }
@@ -190,7 +190,7 @@ export async function ensureSmartParkingLots(): Promise<void> {
     await ensureSlots(locationId, config);
   }
 
-  console.log('✅ Smart parking lots ready: Nandanvan House (15) and X Parking (20)');
+  console.log('✅ Smart parking lots ready: Nandanvan House (15) and X Parking (10)');
 }
 
 export async function getSmartParkingSlots(

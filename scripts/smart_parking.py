@@ -53,7 +53,7 @@ PARKINGS = {
     },
     "X": {
         "name": "X Parking",
-        "slots": {i: True for i in range(1, 21)},  # 20 slots
+        "slots": {i: True for i in range(1, 11)},  # 10 slots
     },
 }
 

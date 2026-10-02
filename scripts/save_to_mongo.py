@@ -51,7 +51,7 @@ PARKING_META = {
     "X": {
         "name": "X Parking",
         "unique_parking_id": "X_PARKING",
-        "slot_count": 20,
+        "slot_count": 10,
     },
 }
 
