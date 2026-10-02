@@ -12,21 +12,21 @@ import {
 } from './mongo.js';
 
 export const SMART_PARKINGS = {
+  NH: {
+    pid: 'NH',
+    name: 'Nandanvan House',
+    uniqueParkingId: 'NH_PARKING',
+    slotCount: 15,
+    city: 'Nagpur',
+    address: 'Nandanvan House',
+  },
   X: {
     pid: 'X',
     name: 'X Parking',
     uniqueParkingId: 'X_PARKING',
-    slotCount: 10,
-    city: 'Nagpur',
-    address: 'X Parking Lot',
-  },
-  Y: {
-    pid: 'Y',
-    name: 'Y Parking',
-    uniqueParkingId: 'Y_PARKING',
     slotCount: 20,
     city: 'Nagpur',
-    address: 'Y Parking Lot',
+    address: 'X Parking Lot',
   },
 } as const;
 
@@ -68,11 +68,11 @@ export function parseSlotKey(raw: string): {
   const match = String(raw || '')
     .trim()
     .toUpperCase()
-    .match(/^([XY])(\d+)$/);
+    .match(/^(NH|X)(\d+)$/);
 
   if (!match) {
     throw new SmartParkingError(
-      `Invalid slot ID '${raw}'. Use X1-X10 or Y1-Y20.`,
+      `Invalid slot ID '${raw}'. Use NH1-NH15 or X1-X20.`,
       400
     );
   }
@@ -190,7 +190,7 @@ export async function ensureSmartParkingLots(): Promise<void> {
     await ensureSlots(locationId, config);
   }
 
-  console.log('✅ Smart parking lots ready: X Parking (10) and Y Parking (20)');
+  console.log('✅ Smart parking lots ready: Nandanvan House (15) and X Parking (20)');
 }
 
 export async function getSmartParkingSlots(
@@ -506,7 +506,7 @@ export async function resetSmartParking(pidRaw: string) {
 
   if (!config) {
     throw new SmartParkingError(
-      `Unknown parking location '${pidRaw}'. Use X or Y.`,
+      `Unknown parking location '${pidRaw}'. Use NH or X.`,
       404
     );
   }

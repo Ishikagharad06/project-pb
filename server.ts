@@ -91,6 +91,17 @@ app.use((req, res, next) => {
 });
 
 /* ============================================================
+   VERCEL API ROUTE NORMALIZATION
+============================================================ */
+
+app.use((req, res, next) => {
+  if (process.env.VERCEL && req.url && !req.url.startsWith('/api')) {
+    req.url = `/api${req.url.startsWith('/') ? req.url : '/' + req.url}`;
+  }
+  next();
+});
+
+/* ============================================================
    GEMINI
 ============================================================ */
 

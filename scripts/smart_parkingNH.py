@@ -6,7 +6,7 @@ Manual slot toggles update ParkBy in this order:
 
 Run (from the project root):
     pip install flask requests python-dotenv
-    python scripts/smart_parking.py
+    python scripts/smart_parkingNH.py
 
 Then open http://127.0.0.1:5000 in your browser.
 """

@@ -43,14 +43,14 @@ SLOT_COLLECTION = "parking_slots"
 MONGO_SERVER_SELECTION_MS = 15000
 
 PARKING_META = {
+    "NH": {
+        "name": "Nandanvan House",
+        "unique_parking_id": "NH_PARKING",
+        "slot_count": 15,
+    },
     "X": {
         "name": "X Parking",
         "unique_parking_id": "X_PARKING",
-        "slot_count": 10,
-    },
-    "Y": {
-        "name": "Y Parking",
-        "unique_parking_id": "Y_PARKING",
         "slot_count": 20,
     },
 }
@@ -161,7 +161,7 @@ def sync_via_parkby(session: requests.Session, snapshot: dict) -> dict:
 
 def verify_mongo(collection_status) -> None:
     count = collection_status.count_documents(
-        {"unique_parking_id": {"$in": ["X_PARKING", "Y_PARKING"]}}
+        {"unique_parking_id": {"$in": ["NH_PARKING", "X_PARKING"]}}
     )
     if count < 2:
         raise RuntimeError(
@@ -177,9 +177,9 @@ def fetch_and_upsert(session: requests.Session, collection_status) -> None:
         sync_via_parkby(session, snapshot)
         verify_mongo(collection_status)
         logger.info(
-            "Synced X=%s free / Y=%s free",
+            "Synced NH=%s free / X=%s free",
+            snapshot["NH"]["available"],
             snapshot["X"]["available"],
-            snapshot["Y"]["available"],
         )
     except Exception as exc:
         logger.error("Sync error: %s", exc)
