@@ -593,8 +593,19 @@ return res.json({
 );
 
 /* ============================================================
-   HEALTH
+   ROOT & HEALTH
 ============================================================ */
+
+app.get(
+  '/api',
+  (req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'ParkBy API',
+      message: 'ParkBy Backend is running'
+    });
+  }
+);
 
 app.get(
   '/api/health',

@@ -18,6 +18,9 @@ if (!connectionString) {
 
 export const pool = new Pool({
   connectionString,
+  ssl: connectionString?.includes('localhost')
+    ? false
+    : { rejectUnauthorized: false },
 });
 
 // ============================================================
