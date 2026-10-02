@@ -656,6 +656,8 @@ app.get(
           LEFT JOIN parking_slots ps
             ON ps.parking_id = pl.id
 
+          WHERE pl.status = 'active'
+
           GROUP BY pl.id
 
           ORDER BY pl.name

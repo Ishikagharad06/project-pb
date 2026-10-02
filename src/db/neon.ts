@@ -567,6 +567,7 @@ export async function getNeonSlots(locationId?: string) {
       $1::uuid IS NULL
       OR ps.parking_id = $1::uuid
     )
+    AND pl.status = 'active'
 
     ORDER BY
       pl.name,
