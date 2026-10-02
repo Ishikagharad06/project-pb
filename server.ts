@@ -2383,66 +2383,49 @@ async function startServer() {
 
 if (process.env.VERCEL) {
   /*
-   * Vercel deployment.
-   *
-   * No local app.listen().
-   * No 30-second background interval.
+   * Vercel Serverless deployment.
+   * Bootstrap smart parking schema & sync on cold start if needed.
    */
+  ensureSmartParkingLots()
+    .then(async () => {
+      if (!isMongoConfigured()) {
+        console.warn('MONGODB_URI is missing');
+        return;
+      }
 
-  const distPath =
-    path.join(
-      process.cwd(),
-      'dist'
-    );
-
-  app.use(
-    express.static(
-      distPath
-    )
-  );
-
-  app.get(
-    '*',
-    (req, res) => {
-      res.sendFile(
-        path.join(
-          distPath,
-          'index.html'
-        )
+      await testMongoConnection();
+      await syncSmartParkingToMongo();
+    })
+    .catch((error) => {
+      console.error(
+        'Smart parking bootstrap error:',
+        error
       );
-    }
-  );
+    });
 } else {
   /*
    * Local development.
    */
 
   testNeonConnection()
-
     .then(() =>
       testDatabaseTables()
     )
-
     .then(() =>
       inspectParkingSlots()
     )
-
     .then(() =>
       inspectParkingTables()
     )
-
     .then(() =>
       inspectParkingData()
     )
-
     .then(() =>
       ensurePaymentsTable()
     )
-
     .then(() =>
       ensureSmartParkingLots()
     )
-
     .then(async () => {
       if (!isMongoConfigured()) {
         console.warn(
@@ -2465,25 +2448,21 @@ if (process.env.VERCEL) {
         );
       }
     })
-
     .then(() =>
       completeExpiredNeonBookings()
     )
-
     .then((expiredSlotIds) =>
       syncSmartSlotsQuietly(
         expiredSlotIds || []
       )
     )
-
     .then(() =>
       startServer()
     )
-
     .then(() => {
       /*
        * Check every 30 seconds and release
-       * expired slots.
+       * expired slots in local dev.
        */
       setInterval(() => {
         completeExpiredNeonBookings()
@@ -2500,7 +2479,6 @@ if (process.env.VERCEL) {
           );
       }, 30_000);
     })
-
     .catch(error => {
       console.error(
         'Database startup error:',
@@ -2508,25 +2486,6 @@ if (process.env.VERCEL) {
       );
 
       process.exit(1);
-    });
-}
-
-if (process.env.VERCEL) {
-  ensureSmartParkingLots()
-    .then(async () => {
-      if (!isMongoConfigured()) {
-        console.warn('MONGODB_URI is missing');
-        return;
-      }
-
-      await testMongoConnection();
-      await syncSmartParkingToMongo();
-    })
-    .catch((error) => {
-      console.error(
-        'Smart parking bootstrap error:',
-        error
-      );
     });
 }
 

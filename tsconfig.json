@@ -23,6 +23,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src", "server.ts", "scripts"],
-  "exclude": ["node_modules", "dist", "venv", ".venv"]
+  "include": ["src", "server.ts", "scripts", "api"],
+  "exclude": ["node_modules", "dist", "venv", ".venv", "legacy_django_api"]
 }

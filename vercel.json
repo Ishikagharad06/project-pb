@@ -1,36 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "app": {
-      "root": ".",
-      "framework": "vite"
-    },
-    "scripts": {
-      "root": "scripts",
-      "framework": "flask",
-      "entrypoint": "smart_parking.py",
-      "bindings": [
-        {
-          "type": "service",
-          "service": "app",
-          "format": "url",
-          "env": "PARKBY_API_URL"
-        }
-      ]
-    }
-  },
   "rewrites": [
     {
-      "source": "/smart-parking/(.*)",
-      "destination": {
-        "service": "scripts"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "app"
-      }
+      "source": "/api/(.*)",
+      "destination": "/api"
     }
   ]
 }
