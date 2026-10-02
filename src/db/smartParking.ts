@@ -239,7 +239,7 @@ function serializeFromRows(rows: SmartSlotRow[]) {
       })
       .sort((a, b) => a.id - b.id);
 
-    const total = config.slotCount;
+    const total = slots.length;
     const free = slots.filter((slot) => slot.available).length;
 
     data[config.pid] = {
@@ -293,13 +293,14 @@ async function syncRowsToMongo(rows: SmartSlotRow[]): Promise<void> {
     });
 
     const available = slots.filter((slot) => slot.available).length;
+    const totalCapacity = slots.length;
     const parkingDoc: LiveParkingDocument = {
       unique_parking_id: config.uniqueParkingId,
       location: config.pid,
       display_name: config.name,
-      total_capacity: config.slotCount,
+      total_capacity: totalCapacity,
       available,
-      occupied: config.slotCount - available,
+      occupied: totalCapacity - available,
       slots,
       fetched_at: fetchedAt,
       source: 'smart_parking',
